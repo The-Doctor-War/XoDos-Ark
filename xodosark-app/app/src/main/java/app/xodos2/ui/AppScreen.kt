@@ -1731,7 +1731,11 @@ if (showDistroSelection) {
                             if (pct != null) persistScalePercent(pct)
                         },
                         vulkanOptions = VULKAN_MODES,
-                        openGLOptions = if (desktopVulkanMode == "TURNIP") listOf("ZINK", "GL4ES") else OPENGL_MODES,
+                        openGLOptions = when (desktopVulkanMode) {
+    "TURNIP" -> listOf("ZINK", "GL4ES")
+    "VENUS"  -> listOf("LLVMPIPE", "VIRGL", "ZINK")
+    else     -> OPENGL_MODES
+},
                         hasArchRootfs = hasContainer1,     
                         onContainerManagerClick = {               
             scope.launch { drawerState.close() }
