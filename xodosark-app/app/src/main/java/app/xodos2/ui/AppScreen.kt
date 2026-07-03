@@ -441,6 +441,7 @@ fun extractLocalIntoSlot(uri: Uri, containerId: Int) {
     fun enterTerminal() {
         try { WaylandBridge.nativeSetWmMode(WaylandBridge.WM_MODE_NESTED) } catch (_: Throwable) {}
         uiMode = UiMode.TERMINAL
+        keyboardWanted = false 
         waylandVisible = false
         PtyOutputRelay.setSessionIoLoggingEnabled(TerminalSessionIds.LEGACY_ARCH_X11_PTY, false)
         PtyOutputRelay.setSessionIoLoggingEnabled(TerminalSessionIds.ARCH_WAYLAND_DISPLAY, false)
@@ -451,6 +452,7 @@ fun extractLocalIntoSlot(uri: Uri, containerId: Int) {
     }
     
     fun requestKeyboard() {
+    keyboardWanted = true
     showKeyboardTrigger++
 }
 
