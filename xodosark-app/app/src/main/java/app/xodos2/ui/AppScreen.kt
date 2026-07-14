@@ -258,7 +258,15 @@ var pendingContainerForBackup by remember { mutableStateOf<Int?>(null) }
 var backupInProgress by remember { mutableStateOf(false) }
 var backupProgress by remember { mutableStateOf(0 to "") }  // (pct, msg)
 
-
+// --- Bootstrap package installation ---
+var bootstrapUri by remember { mutableStateOf<Uri?>(null) }
+var bootstrapInProgress by remember { mutableStateOf(false) }
+var bootstrapProgress by remember { mutableStateOf(0 to "") }   // (pct, msg)
+var bootstrapError by remember { mutableStateOf<String?>(null) }
+// --- Bootstrap download ---
+var bootstrapDownloadInProgress by remember { mutableStateOf(false) }
+var bootstrapDownloadProgress by remember { mutableStateOf(0 to "") }
+var showNativeContainerPrompt by remember { mutableStateOf<Int?>(null) }  
 
     fun refreshContainerState() {
         val mask = NativeBridge.getInstalledContainersMask()
@@ -279,6 +287,8 @@ var backupProgress by remember { mutableStateOf(0 to "") }  // (pct, msg)
         hasDebianRootfs = (mask and 2) != 0
         hasWineRootfs = (mask and 4) != 0
     }
+    
+
 val backupFilePicker = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.CreateDocument("application/x-xz")
 ) { uri: Uri? ->
@@ -300,6 +310,26 @@ val backupFilePicker = rememberLauncherForActivityResult(
         }
     }
 }
+// ----- File picker for bootstrap archive -----
+val pickBootstrapFile = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocument()
+) { uri: Uri? ->
+    if (uri != null) {
+        val exists = try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                cursor.moveToFirst()
+                cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE)) > -1
+            } ?: false
+        } catch (e: Exception) { false }
+
+        if (exists) {
+            bootstrapUri = uri
+        } else {
+            Toast.makeText(context, "Selected file no longer exists.", Toast.LENGTH_LONG).show()
+        }
+    }
+}
+
 
     // ----- distro selection state -----
     var availableDistros by remember { mutableStateOf<List<DistroDescriptor>>(emptyList()) }
@@ -309,6 +339,43 @@ val backupFilePicker = rememberLauncherForActivityResult(
     var pendingDistro by remember { mutableStateOf<DistroDescriptor?>(null) }
     var pendingLocalUri by remember { mutableStateOf<Uri?>(null) }
     val setupAlreadyCompleted = prefs.getBoolean("setup_done", false)
+
+
+fun markContainerAsNativeTerminal(containerId: Int) {
+    val containerDir = File(context.filesDir, "containers/$containerId")
+    containerDir.mkdirs()
+    File(containerDir, ".xodos2_rootfs_ok").createNewFile()
+    File(containerDir, ".rootfs_type").writeText("XoDos-Ark")
+    NativeInstallCoordinator.saveContainerDistro(context, containerId, "XoDos-Ark")
+    refreshContainerState()
+    refreshLegacyFlags()
+}
+
+fun proceedToDistroSelection(containerId: Int) {
+    pendingContainerForInstall = containerId
+    showDistroSelection = true
+    if (availableDistros.isEmpty()) {
+        NativeInstallCoordinator.invalidateDistroCache()
+        distroFetchState = DistroFetchState.LOADING
+        scope.launch {
+            availableDistros = withContext(Dispatchers.IO) {
+                NativeInstallCoordinator.fetchAvailableDistros(NativeInstallCoordinator.DistroSource.CUSTOM)
+            }
+            distroFetchState = if (availableDistros.isEmpty()) DistroFetchState.ERROR else DistroFetchState.LOADED
+        }
+    }
+}
+
+fun handleContainerInstallClick(containerId: Int) {
+    val bashrc = File(context.filesDir, "usr/etc/bash.bashrc")
+    if (bashrc.exists()) {
+        showContainerManager = false
+        showNativeContainerPrompt = containerId
+    } else {
+        proceedToDistroSelection(containerId)
+    }
+}
+
 
     // ----- mode & drawer state -----
     var menuOpen by remember { mutableStateOf(false) }
@@ -894,6 +961,67 @@ suspend fun downloadAndExtractTurnipDrivers(containerIds: List<Int>) = withConte
         }
     }
 }
+
+fun downloadBootstrapArchive() {
+    scope.launch {
+        bootstrapDownloadInProgress = true
+        bootstrapDownloadProgress = 0 to "Starting download…"
+
+        try {
+            val url = URL("https://github.com/xodiosx/XoDos-Ark/releases/download/extra-0.1/extra.tar.xz")   
+            val connection = withContext(Dispatchers.IO) {
+                url.openConnection() as HttpURLConnection
+            }
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 15_000
+            connection.connect()
+
+            val totalSize = connection.contentLengthLong
+            val inputStream = connection.inputStream
+
+            // Save to /sdcard/Download
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val outputFile = File(downloadsDir, "extra.tar.xz")
+
+            withContext(Dispatchers.IO) {
+                inputStream.use { input ->
+                    outputFile.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesCopied = 0L
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            bytesCopied += read
+                            if (totalSize > 0) {
+                                val pct = (bytesCopied * 100 / totalSize).toInt()
+                                withContext(Dispatchers.Main) {
+                                    bootstrapDownloadProgress = pct to "Downloading… $pct%"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                bootstrapDownloadProgress = 100 to "Download complete"
+                Toast.makeText(context, "Extra drivers archive saved to Downloads", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                bootstrapDownloadProgress = -1 to "Download failed: ${e.message}"
+                Toast.makeText(context, "Extra drivers download failed", Toast.LENGTH_LONG).show()
+            }
+        } finally {
+            withContext(Dispatchers.Main) {
+                bootstrapDownloadInProgress = false
+            }
+        }
+    }
+}
+
+
     // ----- native init and container check -----
     LaunchedEffect(Unit) {
         AppLogger.log("Starting native init and asset sync")
@@ -1040,7 +1168,84 @@ LaunchedEffect(terminalSessionState.activeSessionId) {
     prefs.edit().putInt("active_terminal_session_id", terminalSessionState.activeSessionId).apply()
 }
 
+// Bootstrap extraction effect
+LaunchedEffect(bootstrapUri) {
+    val uri = bootstrapUri ?: return@LaunchedEffect
+    bootstrapUri = null   // consume
+    bootstrapInProgress = true
+    bootstrapProgress = 0 to "Copying archive…"
 
+    val usrDir = File(context.filesDir, "usr").apply { mkdirs() }
+    val cacheDir = context.cacheDir
+    val tempArchive = File(cacheDir, "bootstrap_${System.currentTimeMillis()}.tar.xz")
+
+    try {
+        // Copy selected file to cache
+        withContext(Dispatchers.IO) {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tempArchive.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+
+        // Run pv + tar with correct environment
+        val usrBin = File(usrDir, "bin").absolutePath
+        val usrLib = File(usrDir, "lib").absolutePath
+        val env = mapOf(
+            "PATH" to "$usrBin:/system/bin:/sbin:/bin",
+            "LD_LIBRARY_PATH" to "$usrLib:/system/lib64:/lib",
+            "TMPDIR" to cacheDir.absolutePath
+        )
+
+        val cmd = arrayOf(
+            "/system/bin/sh", "-c",
+            "pv -f ${tempArchive.absolutePath} | tar -xJ -C ${usrDir.absolutePath}"
+        )
+
+        val process = ProcessBuilder(*cmd)
+            .directory(cacheDir)
+            .apply { environment().putAll(env) }
+            .redirectErrorStream(false) // pv prints progress to stderr
+            .start()
+
+        // Parse pv's stderr for percentage
+        val errReader = process.errorStream.bufferedReader()
+        val percentRegex = Regex("""(\d+)%""")
+        scope.launch(Dispatchers.IO) {
+            errReader.forEachLine { line ->
+                percentRegex.find(line)?.let { match ->
+                    val pct = match.groupValues[1].toInt()
+                    withContext(Dispatchers.Main) {
+                        bootstrapProgress = pct to "Extracting… $pct%"
+                    }
+                }
+            }
+        }
+
+        val exitCode = process.waitFor()
+        tempArchive.delete()
+
+        withContext(Dispatchers.Main) {
+            if (exitCode == 0) {
+                bootstrapProgress = 100 to "Extra drivers installed"
+                Toast.makeText(context, "Extra drivers packages installed", Toast.LENGTH_SHORT).show()
+            } else {
+                bootstrapError = "Extraction failed (exit code $exitCode)"
+                Toast.makeText(context, "Extra drivers extraction failed", Toast.LENGTH_LONG).show()
+            }
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+            bootstrapError = "Error: ${e.message}"
+            Toast.makeText(context, "Extra drivers installation error", Toast.LENGTH_LONG).show()
+        }
+    } finally {
+        withContext(Dispatchers.Main) {
+            bootstrapInProgress = false
+        }
+    }
+}
 
     // ----- graphics helpers -----
 fun checkAndPromptTurnipDrivers() {
@@ -1125,28 +1330,35 @@ fun injectGraphicsEnvToAllTerminals() {
     
     
     
-    fun setDesktopVulkanMode(mode: String) {
-        val prev = GraphicsModeController.Modes(desktopVulkanMode, desktopOpenGLMode)
-        val next = GraphicsModeController.sanitize(
-            GraphicsModeController.Modes(vulkan = mode, openGL = desktopOpenGLMode),
-            allowedVulkan = VULKAN_MODES,
-            allowedOpenGL = OPENGL_MODES,
-        )
-        if (GraphicsModeController.applyAndMaybeToggleVirglHost(prefs, prev, next)) {
-            rendererSessionResetEpoch++
-        }
-        desktopVulkanMode = next.vulkan
-        desktopOpenGLMode = next.openGL
-        DisplayOrchestrator.updateContainersSystemEnvironment(context, prefs) 
-        injectGraphicsEnvToAllTerminals()  
-        if (next.vulkan == "TURNIP") {
-        
-        checkAndPromptTurnipDrivers()
-    }
-    
-        AppLogger.log("Vulkan mode set to $mode")
+fun setDesktopVulkanMode(mode: String) {
+    val prev = GraphicsModeController.Modes(desktopVulkanMode, desktopOpenGLMode)
+    var next = GraphicsModeController.sanitize(
+        GraphicsModeController.Modes(vulkan = mode, openGL = desktopOpenGLMode),
+        allowedVulkan = VULKAN_MODES,
+        allowedOpenGL = OPENGL_MODES,
+    )
+
+    // force OpenGL to LLVMPIPE when Venus is active
+    if (next.vulkan == "VENUS") {
+        next = next.copy(openGL = "LLVMPIPE")
     }
 
+    if (GraphicsModeController.applyAndMaybeToggleVirglHost(prefs, prev, next)) {
+        rendererSessionResetEpoch++
+    }
+
+    desktopVulkanMode = next.vulkan
+    desktopOpenGLMode = next.openGL
+
+    DisplayOrchestrator.updateContainersSystemEnvironment(context, prefs)
+    injectGraphicsEnvToAllTerminals()
+
+    if (next.vulkan == "TURNIP") {
+        checkAndPromptTurnipDrivers()
+    }
+
+    AppLogger.log("Vulkan mode set to $mode (OpenGL forced to LLVMPIPE if Venus)")
+}
 
     fun setDesktopOpenGLMode(mode: String) {
         val prev = GraphicsModeController.Modes(desktopVulkanMode, desktopOpenGLMode)
@@ -1229,7 +1441,55 @@ if (backupInProgress) {
         return
     }
 
+if (bootstrapInProgress) {
+    InstallScreen(progress = bootstrapProgress.first, message = bootstrapProgress.second)
+    return
+}
 
+
+if (bootstrapError != null) {
+    AlertDialog(
+        onDismissRequest = { bootstrapError = null },
+        title = { Text("Extra drivers installation") },
+        text = { Text(bootstrapError ?: "") },
+        confirmButton = {
+            TextButton(onClick = { bootstrapError = null }) { Text("OK") }
+        }
+    )
+}
+
+
+if (bootstrapDownloadInProgress) {
+    AlertDialog(
+        onDismissRequest = { /* cannot dismiss while downloading */ },
+        title = { Text("Downloading Extra drivers archive (200-Mb)") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (bootstrapDownloadProgress.first >= 0) {
+                    LinearProgressIndicator(
+                        progress = { bootstrapDownloadProgress.first / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        bootstrapDownloadProgress.second,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    Text(
+                        bootstrapDownloadProgress.second,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { bootstrapDownloadInProgress = false }) {
+                Text("Cancel")
+            }
+        }
+    )
+}
 // ── Restart dialog after installation ───────────────────────────
 if (installDone) {
     // Full‑screen surface to avoid the default window background
@@ -1447,29 +1707,17 @@ if (showContainerManager) {
                             modifier = Modifier.weight(1f)
                         )
                         // Install button
-                        IconButton(onClick = {
-                            showContainerManager = false
-                            pendingContainerForInstall = id
-                            showDistroSelection = true
-                                if (availableDistros.isEmpty()) {
-                                NativeInstallCoordinator.invalidateDistroCache() 
-        distroFetchState = DistroFetchState.LOADING
-        scope.launch {
-            availableDistros = withContext(Dispatchers.IO) {
-    NativeInstallCoordinator.fetchAvailableDistros(NativeInstallCoordinator.DistroSource.CUSTOM) 
+                        // Install button
+IconButton(onClick = {
+    showContainerManager = false
+    handleContainerInstallClick(id)
+}) {
+    Icon(
+        imageVector = Icons.Default.AddCircle,
+        contentDescription = "Install to container $id",
+        tint = MaterialTheme.colorScheme.primary
+    )
 }
- 
-            distroFetchState = if (availableDistros.isEmpty()) DistroFetchState.ERROR else DistroFetchState.LOADED
-        }
-    }
-                    
-                            }) {
-                            Icon(
-                                imageVector = Icons.Default.AddCircle,
-                                contentDescription = "Install to container $id",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
                         if (occupied) {
                             // Delete button – shows confirmation instead of immediate delete
                             IconButton(onClick = {
@@ -1488,12 +1736,45 @@ if (showContainerManager) {
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                // Clean cache button – shows confirmation instead of immediate clean
-                TextButton(onClick = {
-                    showCleanCacheConfirmation = true
-                }) {
-                    Text("Clean cache tarballs (*.tar.xz)")
-                }
+
+// ---Install bootstrap packages button ---
+Button(
+    onClick = {
+        showContainerManager = false
+        pickBootstrapFile.launch(arrayOf("application/x-xz", "*/*"))
+    },
+    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+    colors = ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
+) {
+    Text("Install Extra drivers packages")
+}
+
+
+// ---Download bootstrap archive button ---
+Button(
+    onClick = {
+        showContainerManager = false
+        downloadBootstrapArchive()
+    },
+    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+    colors = ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    )
+) {
+    Text("Download Extra drivers archive (200-Mb)")
+}
+
+
+// Clean cache button
+TextButton(onClick = {
+    showCleanCacheConfirmation = true
+}) {
+    Text("Clean cache tarballs (*.tar.xz)")
+}
             }
         },
         confirmButton = {
@@ -1532,6 +1813,37 @@ if (showDeleteConfirmation != null) {
     )
 }
 
+
+// ── Native‑container prompt dialog ──────────────────────────
+if (showNativeContainerPrompt != null) {
+    val containerId = showNativeContainerPrompt!!
+    AlertDialog(
+        onDismissRequest = {
+            showNativeContainerPrompt = null
+        },
+        title = { Text("Use as native terminal?") },
+        text = {
+            Text("Container $containerId can be set up as a native Android terminal (using the Extra drivers packages).\n\nThis will mark the container as installed without downloading a distribution.\n\nDo you want to continue?")
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                markContainerAsNativeTerminal(containerId)
+                showNativeContainerPrompt = null
+                Toast.makeText(context, "Container $containerId set as native terminal", Toast.LENGTH_SHORT).show()
+            }) {
+                Text("Yes, use as native")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                showNativeContainerPrompt = null
+                proceedToDistroSelection(containerId)
+            }) {
+                Text("No, install a distro")
+            }
+        }
+    )
+}
 // ── Clean cache confirmation dialog ───────────────────────────────
 if (showCleanCacheConfirmation) {
     AlertDialog(
@@ -1866,7 +2178,7 @@ if (showDistroSelection) {
             },
             vulkanOptions = VULKAN_MODES,
             openGLOptions = when (desktopVulkanMode) {
-                "TURNIP" -> listOf("ZINK", "GL4ES")
+                "TURNIP" -> listOf("ZINK", "VIRGL", "GL4ES")
                 "VENUS"  -> listOf("LLVMPIPE", "VIRGL", "ZINK")
                 else     -> OPENGL_MODES
             },

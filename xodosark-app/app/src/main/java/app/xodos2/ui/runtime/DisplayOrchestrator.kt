@@ -91,7 +91,7 @@ object DisplayOrchestrator {
         }
         if (payload.isEmpty()) return
         val bytes = payload.toByteArray(Charsets.UTF_8)
-        val x0 = File(context.filesDir, "tmp/.X11-unix/X0")
+        val x0 = File(context.filesDir, "usr/tmp/.X11-unix/X0")
         var polls = 0
         val inject = {
             headlessInjectHandler.postDelayed(
@@ -147,7 +147,7 @@ object DisplayOrchestrator {
         }
         if (payload.isEmpty()) return
         val bytes = payload.toByteArray(Charsets.UTF_8)
-        val x0 = File(context.filesDir, "tmp/.X11-unix/X0")
+        val x0 = File(context.filesDir, "usr/tmp/.X11-unix/X0")
         var polls = 0
         val inject = {
             headlessInjectHandler.postDelayed(
@@ -193,7 +193,7 @@ object DisplayOrchestrator {
         }
         if (payload.isEmpty()) return
         val bytes = payload.toByteArray(Charsets.UTF_8)
-        val x0 = File(context.filesDir, "tmp/.X11-unix/X0")
+        val x0 = File(context.filesDir, "usr/tmp/.X11-unix/X0")
         var polls = 0
         val inject = {
             headlessInjectHandler.postDelayed(
@@ -226,12 +226,16 @@ object DisplayOrchestrator {
                 b.append("VTEST_RENDERER_SOCKET_NAME=/run/xodos2-virgl/vtest.sock\n")
             }
             "ZINK" -> {
-                b.append("GALLIUM_DRIVER=zink\n")
+                b.append("VKD3D_FEATURE_LEVEL=12_0\n")
+                b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                b.append("MESA_VK_WSI_PRESENT_MODE=mailbox\n")
                 b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
                 b.append("LIBGL_ALWAYS_SOFTWARE=0\n")
             }
             "GL4ES" -> {
-                b.append("GALLIUM_DRIVER=zink\n")
+                b.append("VKD3D_FEATURE_LEVEL=12_0\n")
+                b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                b.append("MESA_VK_WSI_PRESENT_MODE=mailbox\n")
                 b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
                 b.append("LIBGL_ALWAYS_SOFTWARE=0\n")
                 b.append("export LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/gl4es:\$LD_LIBRARY_PATH\n")
@@ -244,17 +248,28 @@ object DisplayOrchestrator {
         }
         when (vulkanMode) {
             "VENUS" -> {
+                b.append("VKD3D_FEATURE_LEVEL=12_0\n")
+                b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                b.append("MESA_VK_WSI_PRESENT_MODE=mailbox\n")
+                b.append("GALLIUM_DRIVER=zink\n")
                 b.append("VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/virtio_icd.json\n")
                 b.append("VK_DRIVER_FILES=/usr/share/vulkan/icd.d/virtio_icd.json\n")
                 b.append("VN_DEBUG=vtest\n")
+                b.append("VTEST_SOCKET_NAME=/run/xodos2-virgl/venus.sock\n")
+                b.append("VTEST_RENDERER_SOCKET_NAME=/run/xodos2-virgl/venus.sock\n")
             }
             "TURNIP" -> {
+                b.append("VKD3D_FEATURE_LEVEL=12_0\n")
+                b.append("MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                b.append("MESA_VK_WSI_PRESENT_MODE=mailbox\n")
+                b.append("GALLIUM_DRIVER=zink\n")
                 b.append("VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json\n")
                 b.append("VK_DRIVER_FILES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json\n")
                 b.append("TU_DEBUG=noconform\n")
             }
             else -> {
-                b.append("unset VK_ICD_FILENAMES VK_DRIVER_FILES VN_DEBUG || true\n")
+                b.append("GALLIUM_DRIVER=llvmpipe\n")
+                b.append("unset VK_ICD_FILENAMES MESA_VK_WSI_PRESENT_MODE MESA_LOADER_DRIVER_OVERRIDE VKD3D_FEATURE_LEVEL VK_DRIVER_FILES VN_DEBUG || true\n")
             }
         }
         return b.toString()
@@ -285,23 +300,38 @@ object DisplayOrchestrator {
                 sb.append("export LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/gl4es:\$LD_LIBRARY_PATH\n")
             }
             else -> {
+               sb.append("unset VK_ICD_FILENAMES MESA_VK_WSI_PRESENT_MODE MESA_LOADER_DRIVER_OVERRIDE VKD3D_FEATURE_LEVEL VK_DRIVER_FILES VN_DEBUG || true\n")
                 sb.append("export GALLIUM_DRIVER=llvmpipe\n")
                 sb.append("export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe\n")
                 sb.append("export LIBGL_ALWAYS_SOFTWARE=1\n")
+                
             }
         }
         when (vulkan) {
             "VENUS" -> {
+                sb.append("export VKD3D_FEATURE_LEVEL=12_0\n")
+                sb.append("export MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                sb.append("export MESA_VK_WSI_PRESENT_MODE=mailbox\n")
+                sb.append("export TU_DEBUG=noconform\n")
+                sb.append("export GALLIUM_DRIVER=zink\n")
                 sb.append("export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/virtio_icd.json\n")
                 sb.append("export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/virtio_icd.json\n")
                 sb.append("export VN_DEBUG=vtest\n")
+                sb.append("export VTEST_SOCKET_NAME=/run/xodos2-virgl/venus.sock\n")
+                sb.append("export VTEST_RENDERER_SOCKET_NAME=/run/xodos2-virgl/venus.sock\n")
             }
             "TURNIP" -> {
+                sb.append("export VKD3D_FEATURE_LEVEL=12_0\n")
+                sb.append("export MESA_LOADER_DRIVER_OVERRIDE=zink\n")
+                sb.append("export MESA_VK_WSI_PRESENT_MODE=mailbox\n")
+                sb.append("export TU_DEBUG=noconform\n")             
+                sb.append("export GALLIUM_DRIVER=zink\n")
                 sb.append("export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json\n")
                 sb.append("export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json\n")
                 sb.append("export TU_DEBUG=noconform\n")
             }
             else -> {
+                sb.append("unset VK_ICD_FILENAMES MESA_VK_WSI_PRESENT_MODE MESA_LOADER_DRIVER_OVERRIDE VKD3D_FEATURE_LEVEL VK_DRIVER_FILES VN_DEBUG || true\n")
                 sb.append("export VK_ICD_FILENAMES=/dev/null\n")
             }
         }
@@ -332,22 +362,22 @@ object DisplayOrchestrator {
     val t = distroType.lowercase()
     return when {
         // Arch family
-        t == "archlinux" -> "aarch64"
-        t == "artix"     -> "aarch64"
-        t == "manjaro"   -> "aarch64"   // treat as Arch if no dedicated asset
+        t == "archlinux" -> "debian_trixie"
+        t == "artix"     -> "debian_trixie"
+        t == "manjaro"   -> "debian_trixie"   // treat as Arch if no dedicated asset
 
         // Debian family – everything goes to the same `debian` driver
         t == "debian"       -> "debian_trixie"
         t == "ubuntu"       -> "debian_trixie"
         t == "trisquel"     -> "debian_trixie"
         t == "deepin"       -> "debian_trixie"
-        t == "kali"         -> "debian_trixie"   // Kali is Debian‑based
+        t == "kali"         -> "debian_trixie"  
         t == "raspbian"     -> "debian_trixie"
 
         // RPM family 
-        t == "fedora"       -> "edora_43"
-        t == "almalinux"    -> "edora_43"
-        t == "rocky"        -> "edora_43"
+        t == "fedora"       -> "fedora_43"
+        t == "almalinux"    -> "fedora_43"
+        t == "rocky"        -> "fedora_43"
 
         // Alpine
         t == "alpine"       -> "debian_trixie"

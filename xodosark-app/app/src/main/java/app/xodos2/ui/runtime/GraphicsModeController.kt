@@ -61,22 +61,28 @@ object GraphicsModeController {
      * @return true if the mode actually changed compared to [previous].
      */
     fun applyAndMaybeToggleVirglHost(
-        prefs: SharedPreferences,
-        previous: Modes,
-        modes: Modes,
-    ): Boolean {
-        val changed = previous != modes
-        persist(prefs, modes)
+    prefs: SharedPreferences,
+    previous: Modes,
+    modes: Modes,
+): Boolean {
+    val changed = previous != modes
+    persist(prefs, modes)
 
-        try {
-            if (modes.vulkan == "VENUS" || modes.openGL == "VIRGL") {
-                NativeBridge.startVirglHostIfPossible()
-            } else {
-                NativeBridge.stopVirglHost()
-            }
-        } catch (_: Throwable) {
+    try {
+        val useVenus = modes.vulkan == "VENUS"
+        val useAngle = modes.openGL == "VIRGL"
+
+        if (useVenus || useAngle) {
+            val mask = (if (useVenus) 1 else 0) or (if (useAngle) 2 else 0)
+            NativeBridge.startVirglServers(mask)
+        } else {
+            NativeBridge.stopVirglHost()
         }
-        return changed
-    }
+    } catch (_: Throwable) { }
+
+    return changed
+}
+    
+    
 }
 

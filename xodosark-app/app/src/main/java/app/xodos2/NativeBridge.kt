@@ -18,6 +18,10 @@ object NativeBridge {
     external fun stopVirglHost()
     external fun startVirglHostIfPossible()
 
+/** Starts VirGL servers: mask bit0 = Venus, bit1 = Angle.
+ *  e.g. 1 = Venus, 2 = Angle, 3 = Both. */
+external fun startVirglServers(mask: Int)
+
     // ── Old Arch/Debian/Wine check (mapped to containers) ──
     fun hasArchRootfs(): Boolean = hasContainerRootfs(1)
     fun hasDebianRootfs(): Boolean = hasContainerRootfs(2)

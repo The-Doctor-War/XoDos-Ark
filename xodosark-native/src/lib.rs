@@ -7,14 +7,13 @@ mod android;
 #[cfg(target_os = "android")]
 mod combined {
     use super::android::{
-      //  self,
         rootfs_fetch,
         proot,
         ApplicationContext,
         container_rootfs_dir, has_container_rootfs, installed_containers, first_installed_container,
-     //   has_rootfs,
         spawn_host_pulseaudio_if_present,
         stop_if_running, start_if_possible,
+        start_virgl_servers,        // <-- new import
     };
 
     use anyhow::{Context, Result};
@@ -29,7 +28,7 @@ mod combined {
     use std::thread;
 
     // --------------------------------------------------------------------------
-    // Session management (unchanged except spawning uses container paths)
+    // Session management (unchanged)
     // --------------------------------------------------------------------------
 
     struct PtySession {
@@ -102,8 +101,6 @@ mod combined {
         });
         Ok(())
     }
-
-    // ... (pty_master_reader_loop, post_pty_chunk_to_java unchanged, as in previous merged version)
 
     fn pty_master_reader_loop(session_id: i32, mut master_read: std::fs::File) {
         let mut buf = [0u8; 4096];
@@ -248,6 +245,16 @@ mod combined {
         start_if_possible();
     }
 
+    // ---------- NEW: startVirglServers (mask: int) ----------
+    #[no_mangle]
+    pub extern "system" fn Java_app_xodos2_NativeBridge_startVirglServers(
+        _env: JNIEnv,
+        _class: JObject,
+        mask: jint,
+    ) {
+        start_virgl_servers(mask as u32);
+    }
+
     // ---------- Container checks ----------
 
     #[no_mangle]
@@ -259,7 +266,6 @@ mod combined {
         has_container_rootfs(container_id as u32) as jboolean
     }
 
-    /// Returns a bitmask of installed containers: bit0=container1, bit1=container2, bit2=container3.
     #[no_mangle]
     pub extern "system" fn Java_app_xodos2_NativeBridge_getInstalledContainersMask(
         _env: JNIEnv,
@@ -272,7 +278,6 @@ mod combined {
         mask
     }
 
-    /// Returns the first installed container ID (1,2,3) or 0 if none.
     #[no_mangle]
     pub extern "system" fn Java_app_xodos2_NativeBridge_getDefaultContainer(
         _env: JNIEnv,
@@ -283,7 +288,6 @@ mod combined {
 
     // ---------- Installation into a specific container ----------
 
-    /// Downloads and extracts a rootfs tarball into the chosen container slot.
     fn install_to_container(
         mut env: JNIEnv,
         container_id: jint,
@@ -351,7 +355,6 @@ mod combined {
 
     // ---------- Session spawning ----------
 
-    /// Spawn a session in a specific container.
     #[no_mangle]
     pub extern "system" fn Java_app_xodos2_NativeBridge_spawnSessionInContainer(
         _env: JNIEnv,
@@ -379,7 +382,6 @@ mod combined {
         }
     }
 
-    /// Spawn a session in the first installed container (default). Returns false if none installed.
     #[no_mangle]
     pub extern "system" fn Java_app_xodos2_NativeBridge_spawnDefaultSession(
         _env: JNIEnv,

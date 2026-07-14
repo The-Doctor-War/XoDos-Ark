@@ -107,7 +107,7 @@ public final class EmbeddedX11Controller {
         X11ActivityBridge.setLorieView(view);
 
         // Keep screen sizing in sync (prevents stretch).
-        view.setCallback((surfaceWidth, surfaceHeight, screenWidth, screenHeight) -> {
+        view.setCallback((surfaceWidth, surfaceHeight, inputTransform) -> {
             int framerate;
             try {
                 framerate = (int) ((view.getDisplay() != null) ? view.getDisplay().getRefreshRate() : 30);
@@ -122,16 +122,16 @@ public final class EmbeddedX11Controller {
                 name = "0";
             }
             // Package-private: only callable inside com.termux.x11.
-            LorieView.sendWindowChange(screenWidth, screenHeight, framerate, name);
+            LorieView.sendWindowChange(view.p.x, view.p.y, framerate, name);
 
             int vw = view.getWidth() > 0 ? view.getWidth() : surfaceWidth;
             int vh = view.getHeight() > 0 ? view.getHeight() : surfaceHeight;
             renderData.imageWidth = vw;
             renderData.imageHeight = vh;
-            renderData.screenWidth = screenWidth;
-            renderData.screenHeight = screenHeight;
-            float sx = vw > 0 ? (float) screenWidth / (float) vw : 1f;
-            float sy = vh > 0 ? (float) screenHeight / (float) vh : 1f;
+            renderData.screenWidth = view.p.x;
+            renderData.screenHeight = view.p.y;
+            float sx = vw > 0 ? (float) view.p.x / (float) vw : 1f;
+            float sy = vh > 0 ? (float) view.p.y / (float) vh : 1f;
             renderData.scale.set(sx, sy);
         });
 
@@ -331,4 +331,3 @@ public final class EmbeddedX11Controller {
         }
     }
 }
-
