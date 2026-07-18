@@ -18,44 +18,44 @@ object DesktopInstallScripts {
             cleanDistro.contains("debian") || cleanDistro.contains("ubuntu") ||
             cleanDistro.contains("kali") || cleanDistro.contains("trisquel") ->
                 Pair(
-                    "apt-get update -y && apt-get upgrade -y --allow-downgrades --allow-remove-essential || true\n" +
-                    "apt-get install -y --allow-downgrades --allow-remove-essential --option Dpkg::Options::=\"--force-confdef\" --option Dpkg::Options::=\"--force-confold\" --option Dpkg::Options::=\"--force-overwrite\"",
+                    "apt-get update -y && apt-get upgrade -y \n" +
+                    "apt-get install -y --option Dpkg::Options::=\"--force-overwrite\"",
                     "mesa-utils xwayland libvulkan-dev mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 vulkan-tools dbus-x11 zip unzip"
                 )
             cleanDistro.contains("arch") || cleanDistro.contains("manjaro") || cleanDistro.contains("artix") ->
                 Pair(
-                    "pacman -Syu --noconfirm --needed --overwrite \"*\" || true\n" +
-                    "pacman -S --noconfirm --needed --overwrite \"*\"",
+                    "pacman -Syu --noconfirm \n" +
+                    "pacman -S --noconfirm --overwrite \"*\"",
                     "mesa-utils xorg-server xorg-xwayland vulkan-devel mesa vulkan-tools  vulkan-virtio dbus"
                 )
             cleanDistro.contains("fedora") || cleanDistro.contains("almalinux") || cleanDistro.contains("rocky") ->
                 Pair(
-                    "dnf upgrade -y || true\n" +
+                    "dnf upgrade -y \n" +
                     "dnf install -y --allowerasing --skip-broken",
                     "glx-utils xorg-x11-server-Xwayland vulkan-loader-devel mesa-dri-drivers vulkan-tools dbus-x11 zip unzip"
                 )
             cleanDistro.contains("alpine") ->
                 Pair(
-                    "apk update || true\n" +
-                    "apk add --force-broken-world --force-non-repository",
+                    "apk update \n" +
+                    "apk add ",
                     "mesa-utils xwayland vulkan-loader mesa-dri-gallium vulkan-tools dbus"
                 )
             cleanDistro.contains("void") ->
                 Pair(
-                    "xbps-install -Syu || true\n" +
+                    "xbps-install -Syu \n" +
                     "xbps-install -y -f",
                     "mesa-utils xwayland vulkan-loader mesa-dri vulkan-tools dbus"
                 )
             cleanDistro.contains("opensuse") ->
                 Pair(
-                    "zypper --non-interactive refresh || true\n" +
-                    "zypper --non-interactive install --force-resolution --allow-downgrade",
+                    "zypper --non-interactive refresh \n" +
+                    "zypper --non-interactive install ",
                     "mesa-utils xorg-x11-server-Xwayland vulkan-devel mesa-dri-drivers vulkan-tools dbus-1-x11 zip unzip"
                 )
             else ->
                 Pair(
                     "apt-get update -y && apt-get upgrade -y --allow-downgrades --allow-remove-essential || true\n" +
-                    "apt-get install -y --allow-downgrades --allow-remove-essential --option Dpkg::Options::=\"--force-confdef\" --option Dpkg::Options::=\"--force-confold\" --option Dpkg::Options::=\"--force-overwrite\"",
+                    "apt-get install -y --option Dpkg::Options::=\"--force-overwrite\"",
                     "mesa-utils xwayland libvulkan-dev mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 vulkan-tools dbus-x11 zip unzip pulseaudio"
                 )
         }
